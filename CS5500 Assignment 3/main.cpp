@@ -2,8 +2,8 @@
 //  main.cpp
 //  CS5500 Assignment 3
 //
-//  Created by Noah Huff on 3/22/21.
-//  ID# 700715656
+//  Created by Noah Huff
+//  UCM ID# 700715656
 //  “I certify that the code in the method functions including method function
 //  main of this project are entirely my own work.”
 
@@ -24,6 +24,7 @@ void check_sem_error(int ret_value);
 void print_sem_value(int id, int semaphore);
 
 int main(int argc, const char * argv[]) {
+    srand((int)time(NULL));
     // create semaphores
     int sem_id = semget(IPC_PRIVATE, 3, SEM_PERM | IPC_CREAT | IPC_EXCL);
     // i created three semaphores, one for full, one for empty, and the last
@@ -79,27 +80,50 @@ int main(int argc, const char * argv[]) {
         fprintf(stderr, "Child Process Creation Failed");
         return 1;
     } else if ( proc_id == 0 ) {
-        // child process
+        // ----------------- child process -------------------
         char * child_buf;
         child_buf = (char*)shmat(shm_id, (char*)0, 0);
         child_process = getpid();
         printf("Child Process PID %d\n", child_process);
+        /*
         int i = 0;
         while ( i < 10 ) {
             printf("C_INT: %d\n", *child_buf);
             child_buf+=4; // imcrement 4, the size of an integer
             i++;
         }
+         */
+        int ret_value = -1;
+        for ( int i = 0; i < 10; i++ ) {
+        int start_consuming_here = semctl(sem_id, sem_full, GETVAL, 0);
+        if ( semctl(sem_id, sem_mutex, GETVAL, 0) ) {
+            semop( sem_id, &sop_mutex_down, 1 );
+            // consumer starts at the end of the full buffer
+             // decrement the full buffer
+            printf("\n\nMADE IT TO CHILD %d\n\n", semctl(sem_id, sem_mutex, GETVAL, 0));
+            check_sem_error(semop( sem_id, &sop_empty_inc, 0 ));
+            //printf("\n\n2_MADE IT TO CHILD\n\n");
+            check_sem_error(semop( sem_id, &sop_full_dec, 0 ));
+            //printf("\n\n3_MADE IT TO CHILD %d\n\n", semctl(sem_id, sem_mutex, GETVAL, 0));
+            semop( sem_id, &sop_mutex_up, 1 );
+            printf("\n\nLEAVING CHILD %d\n\n", semctl(sem_id, sem_mutex, GETVAL, 0));
+
+        }
+     }
         exit(0);
     } else {
-        // parent process
+        // ---------------- parent process -------------------
+        /*
         semop(sem_id, &sop_full_inc, 1);
         printf("SOP_FULL_INC %d\n", semctl(sem_id, sem_full, GETVAL, 0));
         semop(sem_id, &sop_full_dec, 1);
         printf("SOP_FULL_DEC %d\n", semctl(sem_id, sem_full, GETVAL, 0));
+         */
         int * parent_buf;
         parent_buf = (int*)shmat(shm_id, (int*)0, 0);
         printf("Parent Process PID %d\n", parent_process);
+        int buffer_number = 1;
+        /*
         int j = 0;
         while ( j < 10 ) {
             *parent_buf = j;
@@ -107,14 +131,59 @@ int main(int argc, const char * argv[]) {
             parent_buf++;
             j++;
         }
+         */
+        for ( int i = 0; i < 10; i++) {
+          int start_filling_here = semctl(sem_id, sem_full, GETVAL, 0);
+          if ( semctl(sem_id, sem_mutex, GETVAL, 0) && start_filling_here < 10 ) {
+              semop( sem_id, &sop_mutex_down, 1 );
+              printf("\n\nMADE IT TO PARENT %d\n\n", semctl(sem_id, sem_mutex, GETVAL, 0));
+              //*parent_buf = start_filling_here;
+              //printf("P_INT: %d\n", parent_buf);
+              //*parent_buf = buffer_number;
+              //printf("P_INT: %d\n", *parent_buf);
+              printf("P_INT: %d\n", parent_buf);
+              //semop( sem_id, &sop_empty_dec, 0 );
+              semop( sem_id, &sop_full_inc, 0 );
+              printf("\nSTART_FILLING_HERE %d\n", start_filling_here);
+              //buffer_number++;
+              semop( sem_id, &sop_mutex_up, 1 );
+              printf("\nLEAVING PARENT %d\n", semctl(sem_id, sem_mutex, GETVAL, 0));
+              
+              int sleep_time = (rand() % 8) * 10;
+              printf("Producer sleep time %d\n", sleep_time);
+            
+              usleep(sleep_time);
+          }
+
+      }
     }
+    /*
+    if ( child_process == getpid() ) {
+        printf("CHILD_____PROCESS");
+    } else if ( parent_process == getpid() ) {
+        printf("PARENT_______PROCESS");
+    }
+     */
     
-    //semctl(sem_id, sem_full, IPC_RMID, 0);
-    //semctl(sem_id, sem_empty, IPC_RMID, 0);
-    //semctl(sem_id, sem_mutex, IPC_RMID, 0);
+    // wait for child to destroy the semaphores and shared memory
+    parent_process = wait(&child_process);
+    semctl(sem_id, sem_full, IPC_RMID, 0);
+    semctl(sem_id, sem_empty, IPC_RMID, 0);
+    semctl(sem_id, sem_mutex, IPC_RMID, 0);
     
-    //shmctl(shm_id, IPC_RMID, NULL);
+    shmctl(shm_id, IPC_RMID, NULL);
     return 0;
+}
+
+void parent_producer() {
+    int sleep_time = (rand() % 8) * 5;
+    printf("Producer sleep time %d\n", sleep_time);
+    
+    usleep(sleep_time);
+}
+
+void child_consumer() {
+    
 }
 
 // print out the value of the semaphore
